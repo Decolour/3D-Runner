@@ -8,20 +8,24 @@ pygame.init()
 # Константы экрана
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
-HORIZON_Y = SCREEN_HEIGHT // 4  # Горизонтальная линия на границе между первой и остальными тремя четвертями
+HORIZON_Y = SCREEN_HEIGHT // 4  # Горизонтальная линия
 FPS = 60
 
 # Цвета
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+RED = (255, 0, 0)
 
 # Инициализация экрана
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("3D Runner")  # Установка заголовка окна
+pygame.display.set_caption("3D Runner")
 
 # Загрузка изображений
 player_image = pygame.image.load('player.png').convert_alpha()
 obstacle_image = pygame.image.load('obstacle.png').convert_alpha()
+hazard_image = pygame.image.load('hazard.png').convert_alpha()  # Второй тип препятствий
+blood_splash_image = pygame.image.load('blood_splash.png').convert_alpha()
+damage_splash_image = pygame.image.load('damage_splash.png').convert_alpha()
 
 
 # Класс игрока
@@ -32,6 +36,7 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100)
         self.speed_x = 0
+        self.health = 100  # Начальное здоровье игрока
 
     def update(self):
         self.rect.x += self.speed_x
@@ -45,30 +50,39 @@ class Player(pygame.sprite.Sprite):
 
 # Класс препятствий
 class Obstacle(pygame.sprite.Sprite):
-    def __init__(self):
+    def __init__(self, image, effect_type="blood", points=50, health_impact=0):
         super().__init__()
-        self.original_image = obstacle_image
+        self.original_image = image
         self.image = self.original_image
         self.rect = self.image.get_rect()
         self.start_pos = random.randint(0, SCREEN_WIDTH - self.rect.width)
         self.rect.center = (self.start_pos, HORIZON_Y)
         self.size = 0.1  # Начальный размер препятствия
+        self.effect_type = effect_type
+        self.points = points  # Очки за это препятствие
+        self.health_impact = health_impact  # Влияние на здоровье игрока при столкновении
 
     def update(self, global_speed):
-        min_speed = 0.5  # Минимальная скорость, с которой объекты будут двигаться
+        min_speed = 0.5  # Минимальная скорость
         effective_speed = max(global_speed, min_speed)
 
-        # Увеличиваем размер постепенно и пропорционально увеличиваем позицию
         if self.size < 1.0:
-            self.size += effective_speed / 100  # Регулируем скорость увеличения
+            self.size += effective_speed / 100  # Скорость увеличения
         self.image = pygame.transform.scale(self.original_image,
                                             (int(self.original_image.get_width() * self.size),
                                              int(self.original_image.get_height() * self.size)))
         self.rect = self.image.get_rect(center=(self.start_pos, self.rect.centery + int(effective_speed * 10)))
 
-        # Удаляем препятствие, если оно вышло за пределы экрана
         if self.rect.top > SCREEN_HEIGHT or self.size > 2:  # Убираем слишком увеличенные препятствия
             self.kill()
+
+
+# Функция для отображения изображения на короткий промежуток времени
+def show_effect(effect_image, duration=0.25):
+    screen.blit(effect_image, (
+    SCREEN_WIDTH // 2 - effect_image.get_width() // 2, SCREEN_HEIGHT // 2 - effect_image.get_height() // 2))
+    pygame.display.flip()
+    pygame.time.delay(int(duration * 1000))
 
 
 # Основная игра
@@ -83,13 +97,16 @@ def game():
 
     # Начальная скорость и ускорение
     speed = 0  # Начальная скорость равна нулю
-    acceleration = 0.0005  # Ускорение
+    acceleration = 0.05  # Ускорение
     deceleration = acceleration / 3  # Замедление при отпускании клавиши
     fast_deceleration = acceleration * 2  # Быстрое замедление при нажатии вниз
 
     # Начальный интервал появления препятствий
     obstacle_interval = 1000  # В миллисекундах
     last_obstacle_time = pygame.time.get_ticks()
+
+    # Начальные очки
+    score = 0
 
     running = True
     while running:
@@ -127,7 +144,12 @@ def game():
         if speed > 0:
             obstacle_interval = max(1000 - int(speed * 900), 100)  # Интервал от 1000 до 100 мс
             if current_time - last_obstacle_time > obstacle_interval:
-                obstacle = Obstacle()
+                # Определяем тип препятствия случайным образом
+                if random.choice([True, False]):
+                    obstacle = Obstacle(obstacle_image, "blood", 50)
+                else:
+                    obstacle = Obstacle(hazard_image, "damage", 0, -20)  # Второй тип препятствия с уменьшением здоровья
+
                 all_sprites.add(obstacle)
                 obstacles.add(obstacle)
                 last_obstacle_time = current_time
@@ -137,17 +159,59 @@ def game():
         obstacles.update(speed)
 
         # Проверка на столкновение
-        if pygame.sprite.spritecollideany(player, obstacles):
+        hit_obstacle = pygame.sprite.spritecollideany(player, obstacles)
+        if hit_obstacle:
+            if hit_obstacle.effect_type == "blood":
+                score += hit_obstacle.points  # Добавляем очки за столкновение
+                show_effect(blood_splash_image)  # Показать брызги крови
+
+                # Показать изображение очков
+                font = pygame.font.Font(None, 74)
+                score_text = font.render("+50", True, RED)
+                screen.blit(score_text, (
+                SCREEN_WIDTH // 2 - score_text.get_width() // 2, SCREEN_HEIGHT // 2 - score_text.get_height() // 2))
+                pygame.display.flip()
+                pygame.time.delay(250)
+
+            elif hit_obstacle.effect_type == "damage":
+                player.health += hit_obstacle.health_impact  # Уменьшаем здоровье игрока
+                show_effect(damage_splash_image)  # Показать повреждение
+
+                # Показать уменьшение здоровья
+                font = pygame.font.Font(None, 74)
+                health_text = font.render(f"{hit_obstacle.health_impact}", True, RED)
+                screen.blit(health_text, (
+                SCREEN_WIDTH // 2 - health_text.get_width() // 2, SCREEN_HEIGHT // 2 - health_text.get_height() // 2))
+                pygame.display.flip()
+                pygame.time.delay(250)
+
+            hit_obstacle.kill()  # Удаляем препятствие после столкновения
+
+        # Завершение игры при достижении 10000 очков или если здоровье игрока падает до 0
+        if score >= 10000 or player.health <= 0:
             running = False
 
         # Отрисовка горизонта
         screen.fill(WHITE)
-        pygame.draw.line(screen, BLACK, (0, HORIZON_Y), (SCREEN_WIDTH, HORIZON_Y), 3)  # Линия горизонта
+        pygame.draw.line(screen, BLACK, (0, HORIZON_Y), (SCREEN_WIDTH, HORIZON_Y), 2)
+
+        # Отображение всех спрайтов
         all_sprites.draw(screen)
+
+        # Отображение текущих очков
+        font = pygame.font.Font(None, 36)
+        score_text = font.render(f"Score: {score}", True, BLACK)
+        screen.blit(score_text, (10, 10))
+
+        # Отображение текущего здоровья
+        health_text = font.render(f"Health: {player.health}", True, BLACK)
+        screen.blit(health_text, (10, 50))
+
         pygame.display.flip()
 
         clock.tick(FPS)
 
+    # Завершение игры
     pygame.quit()
     sys.exit()
 
