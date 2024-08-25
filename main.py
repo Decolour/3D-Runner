@@ -97,7 +97,7 @@ def game():
 
     # Начальная скорость и ускорение
     speed = 0  # Начальная скорость равна нулю
-    acceleration = 0.05  # Ускорение
+    acceleration = 0.005  # Ускорение
     deceleration = acceleration / 3  # Замедление при отпускании клавиши
     fast_deceleration = acceleration * 2  # Быстрое замедление при нажатии вниз
 
@@ -158,34 +158,39 @@ def game():
         player.update()
         obstacles.update(speed)
 
-        # Проверка на столкновение
-        hit_obstacle = pygame.sprite.spritecollideany(player, obstacles)
-        if hit_obstacle:
-            if hit_obstacle.effect_type == "blood":
-                score += hit_obstacle.points  # Добавляем очки за столкновение
-                show_effect(blood_splash_image)  # Показать брызги крови
+        # Проверка на столкновение с учетом вертикального выравнивания и перекрытия
+        for obstacle in obstacles:
+            # Проверка на одну линию по вертикали
+            if abs(player.rect.centery - obstacle.rect.centery) < 7:  # Допустимая погрешность в пикселях
+                # Проверка горизонтального перекрытия только если выполнено первое условие
+                horizontal_overlap = min(player.rect.right, obstacle.rect.right) - max(player.rect.left,
+                                                                                       obstacle.rect.left)
+                if horizontal_overlap >= 10:  # Проверка перекрытия на 10 пикселей
+                    if obstacle.effect_type == "blood":
+                        score += obstacle.points  # Добавляем очки за столкновение
+                        show_effect(blood_splash_image)  # Показать брызги крови
 
-                # Показать изображение очков
-                font = pygame.font.Font(None, 74)
-                score_text = font.render("+50", True, RED)
-                screen.blit(score_text, (
-                SCREEN_WIDTH // 2 - score_text.get_width() // 2, SCREEN_HEIGHT // 2 - score_text.get_height() // 2))
-                pygame.display.flip()
-                pygame.time.delay(250)
+                        # Показать изображение очков
+                        font = pygame.font.Font(None, 74)
+                        score_text = font.render("+50", True, RED)
+                        screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2,
+                                                 SCREEN_HEIGHT // 2 - score_text.get_height() // 2))
+                        pygame.display.flip()
+                        pygame.time.delay(250)
 
-            elif hit_obstacle.effect_type == "damage":
-                player.health += hit_obstacle.health_impact  # Уменьшаем здоровье игрока
-                show_effect(damage_splash_image)  # Показать повреждение
+                    elif obstacle.effect_type == "damage":
+                        player.health += obstacle.health_impact  # Уменьшаем здоровье игрока
+                        show_effect(damage_splash_image)  # Показать повреждение
 
-                # Показать уменьшение здоровья
-                font = pygame.font.Font(None, 74)
-                health_text = font.render(f"{hit_obstacle.health_impact}", True, RED)
-                screen.blit(health_text, (
-                SCREEN_WIDTH // 2 - health_text.get_width() // 2, SCREEN_HEIGHT // 2 - health_text.get_height() // 2))
-                pygame.display.flip()
-                pygame.time.delay(250)
+                        # Показать уменьшение здоровья
+                        font = pygame.font.Font(None, 74)
+                        health_text = font.render(f"{obstacle.health_impact}", True, RED)
+                        screen.blit(health_text, (SCREEN_WIDTH // 2 - health_text.get_width() // 2,
+                                                  SCREEN_HEIGHT // 2 - health_text.get_height() // 2))
+                        pygame.display.flip()
+                        pygame.time.delay(250)
 
-            hit_obstacle.kill()  # Удаляем препятствие после столкновения
+                    obstacle.kill()  # Удаляем препятствие после столкновения
 
         # Завершение игры при достижении 10000 очков или если здоровье игрока падает до 0
         if score >= 10000 or player.health <= 0:
@@ -207,15 +212,18 @@ def game():
         health_text = font.render(f"Health: {player.health}", True, BLACK)
         screen.blit(health_text, (10, 50))
 
+        # Обновление экрана
         pygame.display.flip()
 
+        # Ограничение FPS
         clock.tick(FPS)
 
-    # Завершение игры
+        # Завершаем Pygame
     pygame.quit()
     sys.exit()
 
 
+# Запуск игры
 if __name__ == "__main__":
     game()
 
